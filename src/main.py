@@ -2,10 +2,23 @@ import os
 from csv_connector import CSVConnector
 
 def main():
-    server_url = "https://intg-engineer-server-929282497502.europe-west1.run.app"
-    project_key = "helloworld"
-    csv_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data.csv")
-    batch_size = 10000
+    # Try to load .env file if python-dotenv is available
+    try:
+        from dotenv import load_dotenv
+        load_dotenv()
+        print("Loaded configuration from .env file")
+    except ImportError:
+        print("python-dotenv not installed, using environment variables and defaults")
+    server_url = os.getenv("SHOWADS_API_URL")
+    project_key = os.getenv("PROJECT_KEY")
+    csv_filename = os.getenv("CSV_PATH", "data.csv")
+    csv_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), csv_filename)
+    batch_size = int(os.getenv("BATCH_SIZE", "10000"))
+    
+    if not server_url:
+        raise ValueError("SHOWADS_API_URL must be set in .env file")
+    if not project_key:
+        raise ValueError("PROJECT_KEY must be set in .env file")
     
     print("Starting CSV Data Connector...")
     print(f"CSV Path: {csv_path}")

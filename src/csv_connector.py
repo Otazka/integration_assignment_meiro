@@ -1,6 +1,7 @@
 import csv
 import sys
 import time
+import os
 from typing import List, Dict, Iterator
 from connector import DataConnector
 from transform import validate_row, transform_row
@@ -12,7 +13,8 @@ class CSVConnector(DataConnector):
     def __init__(self, csv_path: str, server_url: str, project_key: str, batch_size: int = 1000):
         self.csv_path = csv_path
         self.batch_size = batch_size
-        self.request_handler = RequestHandler(max_retries=3)
+        max_retries = int(os.getenv("MAX_RETRIES", "3"))
+        self.request_handler = RequestHandler(max_retries=max_retries)
         self.auth_service = APIToken(server_url, project_key, self.request_handler)
         self.api_client = ApiClient(server_url, self.auth_service, self.request_handler)
         
@@ -68,7 +70,8 @@ class CSVConnector(DataConnector):
                 
                 total_sent += len(batch)
                 print(f"Successfully sent batch {batch_num} ({len(batch)} rows)")
-                time.sleep(0.5)
+                request_delay = float(os.getenv("REQUEST_DELAY", "0.5"))
+                time.sleep(request_delay)
                         
             except Exception as e:
                 print(f"Failed to send batch {batch_num}: {e}")
