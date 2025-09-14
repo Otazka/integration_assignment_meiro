@@ -39,25 +39,4 @@ def transform_row(row: dict) -> dict:
         "customer_banner_id": int(row["Banner_id"])
 }
 
-csv_path = "/Users/elenasurovtseva/integration_assignment_meiro/data.csv"
-transformed_rows = []
-total_rows = 0
-
-with open(csv_path, newline="", encoding="utf-8") as f:
-    reader = csv.DictReader(f)
-    for row in reader:
-        total_rows += 1
-        if validate_row(row):
-            transformed_rows.append(transform_row(row))
-
-header = {"Authorization": f"Bearer 1bb52ffc-7b48-4dec-834f-ee30a375abab"}
-url = "https://intg-engineer-server-929282497502.europe-west1.run.app/banners/show"
-
-if transformed_rows:
-    body = {
-        "VisitorCookies": transformed_rows[0]["customer_cookies"],
-        "BannerId": transformed_rows[0]["customer_banner_id"]
-    }
-    response = requests.post(url, headers=header, json=body)
-    print(response.status_code)
-    print(response.text)
+# Test code removed - functionality moved to csv_connector.py
