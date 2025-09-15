@@ -65,6 +65,13 @@ Rows failing validation are skipped. Valid rows are transformed to:
 - Exponential backoff with jitter on 500/429 responses; other HTTP errors raise.
 - Empty 200 OK responses are treated as success.
 
+### Response status codes
+- 200 OK if the operation is successful
+- 401 Unauthorized if access token is invalid or expired
+- 400 Bad request in case of invalid payload
+- 500 Internal server error if there is an error on the server side
+- 429 Too Many Requests if the API is under heavy load
+
 ## Project structure
 
 - `src/main.py`: CLI entrypoint; loads env, configures logging, runs the connector
