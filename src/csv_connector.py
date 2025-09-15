@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 class CSVConnector(DataConnector):
     def __init__(self, csv_path: str, server_url: str, project_key: str, batch_size: int = 1000, upload_mode: str = None) -> None:
         logger.info(f"Initializing CSV connector with batch size: {batch_size}")
-        self.csv_path = csv_path
+        self.csv_path = (os.getenv("CSV_PATH", "src/data.csv"))
         if batch_size > 1000:
             logger.warning("Batch size %s exceeds API limit of 1000. Capping to 1000.", batch_size)
         self.batch_size = min(batch_size, 1000)

@@ -12,8 +12,15 @@ services:
     build: .
     container_name: main-app
     env_file: .env
+    environment:
+      - CSV_PATH=src/data.csv
+      - UPLOAD_MODE=bulk
+      - BATCH_SIZE=1000
+      - MAX_RETRIES=3
+      - REQUEST_DELAY=0.5
+      - LOG_LEVEL=INFO
     volumes:
-      - ./data.csv:/app/data.csv
+      - ./src:/app/src
     command: ["python3", "src/main.py"]
     ports:
       - 8000:8000
