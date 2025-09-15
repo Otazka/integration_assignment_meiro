@@ -56,6 +56,11 @@ Rows failing validation are skipped. Valid rows are transformed to:
 ```json
 { "VisitorCookie": "...", "BannerId": 15 }
 ```
+- Show banners (bulk): `POST {SHOWADS_API_URL}/banners/show/bulk` with body:
+```json
+{ "Data": [ { "VisitorCookie": "...", "BannerId": 15 }, { "VisitorCookie": "...", "BannerId": 9 } ] }
+```
+- Bulk request size limit: max 1000 records per request (excess is truncated by the connector).
 - Processing windows: data is iterated in windows of size `BATCH_SIZE` for throttling, but each row is sent individually to the single-item endpoint.
 - Exponential backoff with jitter on 500/429 responses; other HTTP errors raise.
 - Empty 200 OK responses are treated as success.
