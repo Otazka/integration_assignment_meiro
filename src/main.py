@@ -30,6 +30,7 @@ def main():
     csv_filename = os.getenv("CSV_PATH", "data.csv")
     csv_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), csv_filename)
     batch_size = int(os.getenv("BATCH_SIZE", "10000"))
+    upload_mode = os.getenv("UPLOAD_MODE", "bulk")
     
     # Validate required credentials
     if not server_url:
@@ -47,7 +48,7 @@ def main():
     
     try:
         logger.info("Initializing CSV connector")
-        connector = CSVConnector(csv_path, server_url, project_key, batch_size)
+        connector = CSVConnector(csv_path, server_url, project_key, batch_size, upload_mode)
         
         logger.info("Starting data processing pipeline")
         connector.run()

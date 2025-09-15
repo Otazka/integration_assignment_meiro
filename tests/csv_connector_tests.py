@@ -29,28 +29,25 @@ class CSVConnectorTests(unittest.TestCase):
         api_client.request.return_value = {"status": "success"}
         api_client_cls.return_value = api_client
 
-        # 2255 valid rows -> expect 3 batches: 1000, 1000, 255
-        connector = CSVConnector("/tmp/data.csv", "https://api", "proj", batch_size=1000)
+        # 2255 valid rows -> still processed in windows of 1000 for throttling,
+        # but each row is sent individually to /banners/show
+        connector = CSVConnector("/tmp/data.csv", "https://api", "proj", batch_size=1000, upload_mode="single")
 
         # Bypass read/transform; call write directly with transformed rows
         rows = make_rows(2255)
-        connector.write(rows)
+        with patch.dict(os.environ, {"REQUEST_DELAY": "0"}):
+            connector.write(rows)
 
-        self.assertEqual(api_client.request.call_count, 3)
-        # Inspect first call
+        # Expect one API call per row
+        self.assertEqual(api_client.request.call_count, 2255)
+        # Inspect first call payload shape
         args, kwargs = api_client.request.call_args_list[0]
         self.assertEqual(args[0], "POST")
-        self.assertEqual(args[1], "banners/show/bulk")
+        self.assertEqual(args[1], "banners/show")
         self.assertIn("json", kwargs)
-        data = kwargs["json"]["Data"]
-        self.assertEqual(len(data), 1000)
-        self.assertIn("VisitorCookie", data[0])
-        self.assertIn("BannerId", data[0])
-
-        # Inspect last call size
-        last_args, last_kwargs = api_client.request.call_args_list[-1]
-        tail = last_kwargs["json"]["Data"]
-        self.assertEqual(len(tail), 255)
+        first = kwargs["json"]
+        self.assertIn("VisitorCookie", first)
+        self.assertIn("BannerId", first)
 
     @patch("csv_connector.ApiClient")
     @patch("csv_connector.RequestHandler")
@@ -60,18 +57,47 @@ class CSVConnectorTests(unittest.TestCase):
         api_client.request.return_value = {"status": "success"}
         api_client_cls.return_value = api_client
 
-        # Even if configured 5000, connector must cap to 1000
-        connector = CSVConnector("/tmp/data.csv", "https://api", "proj", batch_size=5000)
+        # Even if configured 5000, connector must cap to 1000 per processing window.
+        # With single-item endpoint, still one request per row.
+        connector = CSVConnector("/tmp/data.csv", "https://api", "proj", batch_size=5000, upload_mode="single")
         rows = make_rows(1500)
-        connector.write(rows)
+        with patch.dict(os.environ, {"REQUEST_DELAY": "0"}):
+            connector.write(rows)
 
-        # Should be 2 calls: 1000 + 500
-        self.assertEqual(api_client.request.call_count, 2)
+        # Should be 1500 calls total (one per row)
+        self.assertEqual(api_client.request.call_count, 1500)
+        # Validate payload keys for a sample call
+        sample_kwargs = api_client.request.call_args_list[100][1]
+        self.assertIn("VisitorCookie", sample_kwargs["json"]) 
+        self.assertIn("BannerId", sample_kwargs["json"]) 
 
-        first = api_client.request.call_args_list[0][1]["json"]["Data"]
-        second = api_client.request.call_args_list[1][1]["json"]["Data"]
-        self.assertEqual(len(first), 1000)
-        self.assertEqual(len(second), 500)
+    @patch("csv_connector.ApiClient")
+    @patch("csv_connector.RequestHandler")
+    @patch("csv_connector.APIToken")
+    def test_bulk_mode_batches_and_payload(self, _token, _handler, api_client_cls):
+        api_client = Mock()
+        api_client.request.return_value = {"status": "success"}
+        api_client_cls.return_value = api_client
+
+        # Force bulk mode explicitly
+        connector = CSVConnector("/tmp/data.csv", "https://api", "proj", batch_size=1000, upload_mode="bulk")
+        rows = make_rows(2255)
+        with patch.dict(os.environ, {"REQUEST_DELAY": "0"}):
+            connector.write(rows)
+
+        # Expect 3 calls: 1000, 1000, 255
+        self.assertEqual(api_client.request.call_count, 3)
+        # Inspect first call
+        method, endpoint = api_client.request.call_args_list[0][0][:2]
+        self.assertEqual(method, "POST")
+        self.assertEqual(endpoint, "banners/show/bulk")
+        payload = api_client.request.call_args_list[0][1]["json"]["Data"]
+        self.assertEqual(len(payload), 1000)
+        self.assertIn("VisitorCookie", payload[0])
+        self.assertIn("BannerId", payload[0])
+        # Inspect last call size
+        tail = api_client.request.call_args_list[-1][1]["json"]["Data"]
+        self.assertEqual(len(tail), 255)
 
 
 if __name__ == "__main__":

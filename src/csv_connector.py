@@ -13,12 +13,18 @@ from http_handler import RequestHandler
 logger = logging.getLogger(__name__)
 
 class CSVConnector(DataConnector):
-    def __init__(self, csv_path: str, server_url: str, project_key: str, batch_size: int = 1000) -> None:
+    def __init__(self, csv_path: str, server_url: str, project_key: str, batch_size: int = 1000, upload_mode: str = None) -> None:
         logger.info(f"Initializing CSV connector with batch size: {batch_size}")
         self.csv_path = csv_path
         if batch_size > 1000:
             logger.warning("Batch size %s exceeds API limit of 1000. Capping to 1000.", batch_size)
         self.batch_size = min(batch_size, 1000)
+        # upload_mode: 'bulk' or 'single'
+        env_mode = (os.getenv("UPLOAD_MODE", "bulk").strip().lower())
+        self.upload_mode = (upload_mode or env_mode)
+        if self.upload_mode not in ("bulk", "single"):
+            logger.warning("Unknown UPLOAD_MODE '%s'. Falling back to 'bulk'", self.upload_mode)
+            self.upload_mode = "bulk"
         max_retries = int(os.getenv("MAX_RETRIES", "3"))
         logger.info(f"Setting up request handler with max retries: {max_retries}")
         self.request_handler = RequestHandler(max_retries=max_retries)
@@ -67,7 +73,7 @@ class CSVConnector(DataConnector):
         return transformed_rows
     
     def write(self, data: List[Dict[str, Any]]) -> None:
-        logger.info(f"Starting data transfer. Sending {len(data)} rows to server in batches of {self.batch_size}")
+        logger.info(f"Starting data transfer in '{self.upload_mode}' mode. Total rows: {len(data)}; window size: {self.batch_size}")
         
         total_sent = 0
         total_failed = 0
@@ -80,30 +86,42 @@ class CSVConnector(DataConnector):
             logger.info(f"Processing batch {batch_num}/{total_batches} ({len(batch)} rows)")
             
             try:
-                bulk_data = []
-                for row in batch:
-                    bulk_data.append({
-                        "VisitorCookie": row["customer_cookies"],
-                        "BannerId": row["customer_banner_id"]
-                    })
-                
-                logger.debug(f"Prepared bulk data for batch {batch_num}: {len(bulk_data)} records")
-                if len(bulk_data) > 1000:
-                    logger.error("Prepared bulk data size %s exceeds API limit of 1000", len(bulk_data))
-                    bulk_data = bulk_data[:1000]
-                    logger.warning("Truncated bulk data to 1000 records for batch %s", batch_num)
-                body = {"Data": bulk_data}
-                
-                logger.info(f"Sending batch {batch_num} to API")
-                response = self.api_client.request("POST", "banners/show/bulk", json=body)
-                
-                total_sent += len(batch)
-                logger.info(f"Successfully sent batch {batch_num} ({len(batch)} rows)")
-                
-                request_delay = float(os.getenv("REQUEST_DELAY", "0.5"))
-                logger.debug(f"Waiting {request_delay}s before next batch")
-                time.sleep(request_delay)
-                        
+                if self.upload_mode == "single":
+                    request_delay = float(os.getenv("REQUEST_DELAY", "0.5"))
+                    for idx, row in enumerate(batch, start=1):
+                        try:
+                            body = {
+                                "VisitorCookie": row["customer_cookies"],
+                                "BannerId": row["customer_banner_id"]
+                            }
+                            logger.debug(f"Sending row {idx} of batch {batch_num} to API (single-item)")
+                            _ = self.api_client.request("POST", "banners/show", json=body)
+                            total_sent += 1
+                        except Exception as row_err:
+                            logger.error(f"Failed to send row {idx} of batch {batch_num}: {row_err}")
+                            total_failed += 1
+                        if request_delay > 0:
+                            time.sleep(request_delay)
+                else:
+                    bulk_data = []
+                    for row in batch:
+                        bulk_data.append({
+                            "VisitorCookie": row["customer_cookies"],
+                            "BannerId": row["customer_banner_id"]
+                        })
+                    logger.debug(f"Prepared bulk data for batch {batch_num}: {len(bulk_data)} records")
+                    if len(bulk_data) > 1000:
+                        logger.error("Prepared bulk data size %s exceeds API limit of 1000", len(bulk_data))
+                        bulk_data = bulk_data[:1000]
+                        logger.warning("Truncated bulk data to 1000 records for batch %s", batch_num)
+                    body = {"Data": bulk_data}
+                    logger.info(f"Sending batch {batch_num} to API (bulk)")
+                    _ = self.api_client.request("POST", "banners/show/bulk", json=body)
+                    total_sent += len(bulk_data)
+                    request_delay = float(os.getenv("REQUEST_DELAY", "0.5"))
+                    logger.debug(f"Waiting {request_delay}s before next batch")
+                    if request_delay > 0:
+                        time.sleep(request_delay)
             except Exception as e:
                 logger.error(f"Failed to send batch {batch_num}: {e}")
                 total_failed += len(batch)
