@@ -3,20 +3,22 @@ import sys
 import time
 import os
 import logging
-from typing import List, Dict, Iterator
+from typing import List, Dict, Iterator, Any
 from connector import DataConnector
 from transform import validate_row, transform_row
 from client import ApiClient
-from getToken import APIToken
-from request_handler import RequestHandler
+from auth import APIToken
+from http_handler import RequestHandler
 
 logger = logging.getLogger(__name__)
 
 class CSVConnector(DataConnector):
-    def __init__(self, csv_path: str, server_url: str, project_key: str, batch_size: int = 1000):
+    def __init__(self, csv_path: str, server_url: str, project_key: str, batch_size: int = 1000) -> None:
         logger.info(f"Initializing CSV connector with batch size: {batch_size}")
         self.csv_path = csv_path
-        self.batch_size = batch_size
+        if batch_size > 1000:
+            logger.warning("Batch size %s exceeds API limit of 1000. Capping to 1000.", batch_size)
+        self.batch_size = min(batch_size, 1000)
         max_retries = int(os.getenv("MAX_RETRIES", "3"))
         logger.info(f"Setting up request handler with max retries: {max_retries}")
         self.request_handler = RequestHandler(max_retries=max_retries)
@@ -24,7 +26,7 @@ class CSVConnector(DataConnector):
         self.api_client = ApiClient(server_url, self.auth_service, self.request_handler)
         logger.info("CSV connector initialized successfully")
         
-    def read(self) -> Iterator[Dict]:
+    def read(self) -> Iterator[Dict[str, Any]]:
         logger.info(f"Reading CSV file: {self.csv_path}")
         try:
             with open(self.csv_path, newline="", encoding="utf-8") as f:
@@ -43,7 +45,7 @@ class CSVConnector(DataConnector):
             logger.error(f"Error reading CSV file: {e}")
             raise
     
-    def transform(self, data: Iterator[Dict]) -> List[Dict]:
+    def transform(self, data: Iterator[Dict[str, Any]]) -> List[Dict[str, Any]]:
         logger.info("Starting data transformation and validation")
         transformed_rows = []
         total_rows = 0
@@ -64,7 +66,7 @@ class CSVConnector(DataConnector):
         
         return transformed_rows
     
-    def write(self, data: List[Dict]):
+    def write(self, data: List[Dict[str, Any]]) -> None:
         logger.info(f"Starting data transfer. Sending {len(data)} rows to server in batches of {self.batch_size}")
         
         total_sent = 0
@@ -86,6 +88,10 @@ class CSVConnector(DataConnector):
                     })
                 
                 logger.debug(f"Prepared bulk data for batch {batch_num}: {len(bulk_data)} records")
+                if len(bulk_data) > 1000:
+                    logger.error("Prepared bulk data size %s exceeds API limit of 1000", len(bulk_data))
+                    bulk_data = bulk_data[:1000]
+                    logger.warning("Truncated bulk data to 1000 records for batch %s", batch_num)
                 body = {"Data": bulk_data}
                 
                 logger.info(f"Sending batch {batch_num} to API")

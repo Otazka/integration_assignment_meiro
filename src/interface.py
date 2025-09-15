@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from typing import Any
 
 class AuthService(ABC):
     @abstractmethod
@@ -7,5 +8,5 @@ class AuthService(ABC):
 
 class RequestHandler(ABC):
     @abstractmethod
-    def send(self, method: str, url: str, **kwargs):
+    def send(self, method: str, url: str, **kwargs: Any) -> Any:
         pass
