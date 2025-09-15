@@ -10,6 +10,11 @@
 services:
   server:
     build:
+    container_name: main-app
+    env_file: .env
+    volumes:
+      - ./data.csv:/app/data.csv
+    command: ["python3", "src/main.py"]
       context: .
     ports:
       - 8000:8000
